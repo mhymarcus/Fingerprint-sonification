@@ -157,6 +157,33 @@ def _orientation_controls(analysis):
     )
 
 
+def orientation_flow_track(analysis, sample_count):
+    """Unwrapped ridge-flow rotation as normalised control curves.
+
+    Shared by the orientation sound layer and the visual export, so the picture
+    and the sound cannot drift apart: both read the same unwrapping.
+    """
+    x_positions, angles, confidence = _orientation_controls(analysis)
+    continuous = 0.5 * np.unwrap(2.0 * angles)
+    angle_span = float(continuous.max() - continuous.min())
+
+    timeline = np.linspace(0.0, 1.0, sample_count, dtype=np.float64)
+    if angle_span < 1e-6:
+        flow = np.full(sample_count, 0.5, dtype=np.float64)
+        rotation_rate = np.zeros(sample_count, dtype=np.float64)
+    else:
+        pitch_control = (continuous - continuous.min()) / angle_span
+        flow = np.interp(timeline, x_positions, pitch_control)
+        if len(x_positions) > 1:
+            rotation = np.abs(np.gradient(continuous, x_positions))
+            rotation_control = np.clip(rotation / np.pi, 0.0, 1.0)
+            rotation_rate = np.interp(timeline, x_positions, rotation_control)
+        else:
+            rotation_rate = np.zeros(sample_count, dtype=np.float64)
+    confidence_track = np.interp(timeline, x_positions, confidence)
+    return flow, rotation_rate, confidence_track, angle_span, int(len(x_positions))
+
+
 def _orientation_layer(analysis, config, sample_count):
     """Turn the print's ridge-flow rotation into a continuous glissando.
 
@@ -165,24 +192,9 @@ def _orientation_layer(analysis, config, sample_count):
     than a full-range pitch jump. The print's own angular range then spans two
     octaves above the layer's base frequency.
     """
-    x_positions, angles, confidence = _orientation_controls(analysis)
-    continuous = 0.5 * np.unwrap(2.0 * angles)
-    angle_span = float(continuous.max() - continuous.min())
-
-    timeline = np.linspace(0.0, 1.0, sample_count, dtype=np.float64)
-    if angle_span < 1e-6:
-        pitch_track = np.full(sample_count, 0.5, dtype=np.float64)
-        rotation_rate = np.zeros(sample_count, dtype=np.float64)
-    else:
-        pitch_control = (continuous - continuous.min()) / angle_span
-        pitch_track = np.interp(timeline, x_positions, pitch_control)
-        if len(x_positions) > 1:
-            rotation = np.abs(np.gradient(continuous, x_positions))
-            rotation_control = np.clip(rotation / np.pi, 0.0, 1.0)
-            rotation_rate = np.interp(timeline, x_positions, rotation_control)
-        else:
-            rotation_rate = np.zeros(sample_count, dtype=np.float64)
-    smooth_confidence = np.interp(timeline, x_positions, confidence)
+    pitch_track, rotation_rate, smooth_confidence, angle_span, control_points = (
+        orientation_flow_track(analysis, sample_count)
+    )
 
     # The size of the glide is proportional to how far the ridge flow actually
     # rotates: a quarter turn becomes one octave, a half turn two. A print with
@@ -205,7 +217,7 @@ def _orientation_layer(analysis, config, sample_count):
             "layer": "ridge_orientation",
             "start_seconds": 0.0,
             "duration_seconds": config.duration,
-            "control_points": int(len(x_positions)),
+            "control_points": control_points,
             "orientation_unit": "radians_modulo_pi",
             "unwrapped_span_radians": angle_span,
             "pitch_octaves": octaves,

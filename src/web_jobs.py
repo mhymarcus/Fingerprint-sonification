@@ -26,6 +26,7 @@ from src.diagnostics import (
 from src.geometry import analyze_cv
 from src.image_processor import preprocess_image
 from src.sonification import synthesize_multilayer
+from src.visual_export import build_visual_package
 
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp"}
@@ -37,6 +38,7 @@ class WebResult:
     mix_wav: bytes
     stem_wavs: dict
     stems_zip: bytes
+    visual_zip: bytes
     figures: dict
     geometry: dict
     summary: dict
@@ -157,10 +159,15 @@ def sonify(
         ),
     }
 
+    visual = build_visual_package(analysis, multilayer, config, source_name=filename)
+
     return WebResult(
         mix_wav=wav_bytes(multilayer.mix, config.sample_rate),
         stem_wavs=stem_wavs,
         stems_zip=buffer.getvalue(),
+        visual_zip=visual.zip_bytes(
+            wav_bytes(multilayer.mix, config.sample_rate), stem_wavs, config.sample_rate
+        ),
         figures=figures,
         geometry=build_geometry_document(analysis, events=multilayer.events),
         summary=_summary(analysis, multilayer, config),

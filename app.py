@@ -15,6 +15,7 @@ import streamlit as st
 
 from config import SonificationConfig
 from src import ui_theme
+from src.local_queue import publish
 from src.web_jobs import MAX_UPLOAD_BYTES, sonify
 
 CHECKPOINT_ENV = "RIDGE_CHECKPOINT"
@@ -164,7 +165,7 @@ def render_output(result, filename):
     st.audio(result.mix_wav, format="audio/wav")
     st.write("")
 
-    downloads = st.columns(3, gap="small")
+    downloads = st.columns(4, gap="small")
     downloads[0].download_button(
         "mix .wav",
         result.mix_wav,
@@ -185,6 +186,18 @@ def render_output(result, filename):
         file_name=f"{stem}_geometry.json",
         mime="application/json",
         width="stretch",
+    )
+    published = st.session_state.get("published")
+    if published:
+        st.caption(f"handed to the projector folder · {published}")
+
+    downloads[3].download_button(
+        "visual .zip",
+        result.visual_zip,
+        file_name=f"{stem}_visual.zip",
+        mime="application/zip",
+        width="stretch",
+        help="TouchDesigner package: mix, controls.wav and events.json.",
     )
 
     section("04", "geometry")
@@ -309,6 +322,14 @@ def main():
             else:
                 st.session_state["result"] = result
                 st.session_state["filename"] = filename
+                try:
+                    published = publish(result.visual_zip, filename)
+                except (ValueError, OSError) as error:
+                    st.warning(f"could not write to the projector folder: {error}")
+                else:
+                    st.session_state["published"] = (
+                        str(published) if published else None
+                    )
 
     result = st.session_state.get("result")
     if result is not None:

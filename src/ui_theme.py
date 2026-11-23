@@ -378,11 +378,13 @@ p, li, span, label, input, textarea, .stMarkdown, [data-testid="stMarkdownContai
 
 [data-testid="stExpander"] summary:hover { color: var(--fg); }
 
-[data-testid="stAlert"] {
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  color: var(--dim);
+/* Streamlit paints the alert colour on the inner container, not the wrapper. */
+[data-testid="stAlert"],
+[data-testid="stAlertContainer"] {
+  background: transparent !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  color: var(--dim) !important;
 }
 
 [data-testid="stAlert"] p {
