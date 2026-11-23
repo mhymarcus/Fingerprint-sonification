@@ -8,9 +8,11 @@ Run locally:
     streamlit run app.py
 """
 
+import io
 import os
 from pathlib import Path
 
+from PIL import Image, ImageDraw, ImageOps
 import streamlit as st
 
 from config import SonificationConfig
@@ -303,13 +305,43 @@ def main():
                 "pull these in tight around the finger only. Leave them alone when "
                 "the photo already fills the frame."
             )
-            box = st.columns(4, gap="small")
-            left = box[0].slider("left %", 0, 90, 0, 1)
-            top = box[1].slider("top %", 0, 90, 0, 1)
-            right = box[2].slider("right %", 10, 100, 100, 1)
-            bottom = box[3].slider("bottom %", 10, 100, 100, 1)
+            sliders = st.columns(4, gap="small")
+            left = sliders[0].slider("left %", 0, 90, 0, 1)
+            top = sliders[1].slider("top %", 0, 90, 0, 1)
+            right = sliders[2].slider("right %", 10, 100, 100, 1)
+            bottom = sliders[3].slider("bottom %", 10, 100, 100, 1)
             if (left, top, right, bottom) != (0, 0, 100, 100):
                 crop = (left / 100, top / 100, right / 100, bottom / 100)
+
+            # Live preview: without this the sliders move blind.
+            previews = st.columns(2, gap="small")
+            try:
+                photo = ImageOps.exif_transpose(
+                    Image.open(io.BytesIO(image_bytes))
+                ).convert("L")
+                photo_w, photo_h = photo.size
+                box = (
+                    int(left / 100 * photo_w),
+                    int(top / 100 * photo_h),
+                    int(right / 100 * photo_w),
+                    int(bottom / 100 * photo_h),
+                )
+                marked = photo.convert("RGB")
+                ImageDraw.Draw(marked).rectangle(
+                    box, outline=(255, 72, 72), width=max(2, photo_w // 220)
+                )
+                marked.thumbnail((340, 340))
+                previews[0].image(marked, caption="the box you are keeping", width=340)
+
+                cut = photo.crop(box)
+                cut.thumbnail((340, 340))
+                previews[1].image(
+                    cut,
+                    caption=f"cropped · {box[2] - box[0]} × {box[3] - box[1]} px",
+                    width=340,
+                )
+            except (OSError, ValueError):
+                previews[0].caption("could not preview this image")
 
     section("02", "parameters")
     config = build_config()
