@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ridge mask corrector</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Ridge mask corrector</h1>
+  <div id="progress" class="progress">loading…</div>
+</header>
+
+<main>
+  <section class="stage">
+    <canvas id="view" width="512" height="512"></canvas>
+    <div id="toast" class="toast" hidden></div>
+  </section>
+
+  <aside class="panel">
+    <dl class="meta">
+      <dt>file</dt><dd id="meta-file">–</dd>
+      <dt>split</dt><dd id="meta-split">–</dd>
+      <dt>difficulty</dt><dd id="meta-difficulty">–</dd>
+      <dt>status</dt><dd id="meta-status">–</dd>
+    </dl>
+
+    <div class="controls">
+      <button id="btn-save" class="primary">Save &amp; next <kbd>A</kbd></button>
+      <button id="btn-accept">Accept CV mask <kbd>S</kbd></button>
+      <button id="btn-skip">Skip <kbd>X</kbd></button>
+      <button id="btn-undo">Undo <kbd>U</kbd></button>
+    </div>
+
+    <div class="modes">
+      <button id="btn-brush" class="mode active">Brush <kbd>B</kbd></button>
+      <button id="btn-erase" class="mode">Erase <kbd>E</kbd></button>
+      <label class="size">
+        Size <input id="brush" type="range" min="1" max="12" value="3">
+        <output id="brush-value">3</output>
+      </label>
+    </div>
+
+    <p class="hint">
+      Red overlay is the current mask. Paint white to add ridge, erase to remove.
+      <kbd>N</kbd>/<kbd>P</kbd> move between prints, <kbd>[</kbd>/<kbd>]</kbd> change brush size.
+    </p>
+    <p class="hint warn">
+      Corrections are saved next to the dataset, not to the model. The test split
+      is never opened here.
+    </p>
+  </aside>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Runtime dependencies for the sonification pipeline and the web app.
+# Python 3.11+.
+#
+# opencv-python-headless is deliberate: the hosted app runs on Linux without a
+# display, and the GUI build of OpenCV needs system libraries (libGL) that
+# Streamlit Community Cloud does not provide. Nothing here calls cv2.imshow.
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.59.1
+imageio==2.37.0
+kiwisolver==1.4.9
+lazy_loader==0.4
+matplotlib==3.10.5
+networkx==3.5
+numpy==2.2.6
+opencv-python-headless==4.12.0.88
+packaging==25.0
+pillow==11.3.0
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+scikit-image==0.25.2
+scipy==1.16.1
+six==1.17.0
+streamlit>=1.50,<2
+tifffile==2025.6.11
