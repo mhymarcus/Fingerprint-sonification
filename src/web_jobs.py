@@ -23,8 +23,9 @@ from src.diagnostics import (
     build_spectrogram_figure,
     figure_to_png,
 )
+from src.autoframe import plan as plan_frame
 from src.geometry import analyze_cv
-from src.image_processor import preprocess_image
+from src.image_processor import load_grayscale_image, preprocess_image
 from src.sonification import synthesize_multilayer
 from src.visual_export import build_visual_package
 
@@ -64,7 +65,15 @@ def _validated_suffix(image_bytes, filename):
     return suffix
 
 
-def _processed_from_bytes(image_bytes, filename, width, height, enhance_contrast, crop=None):
+def _processed_from_bytes(
+    image_bytes,
+    filename,
+    width,
+    height,
+    enhance_contrast,
+    crop=None,
+    auto_frame=False,
+):
     """Write the upload to a temp file so the CLI loader can validate it."""
     suffix = _validated_suffix(image_bytes, filename)
     handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -72,6 +81,11 @@ def _processed_from_bytes(image_bytes, filename, width, height, enhance_contrast
         handle.write(image_bytes)
         handle.flush()
         handle.close()
+        if auto_frame:
+            # Find the print and decide the resolution from the ridge spacing
+            # actually present in this photograph.
+            crop, width = plan_frame(load_grayscale_image(handle.name))
+            height = width
         processed = preprocess_image(
             handle.name,
             width,
@@ -101,6 +115,7 @@ def _summary(analysis, multilayer, config):
         "spacing_median": float(np.median(spacings)) if spacings else None,
         "spacing_max": max(spacings) if spacings else None,
         "events": len(multilayer.events),
+        "analysis_size": int(config.analysis_width),
         "duration_seconds": float(config.duration),
         "sample_rate": int(config.sample_rate),
         "peak_dbfs": float(20.0 * np.log10(peak)) if peak > 0 else None,
@@ -114,6 +129,7 @@ def sonify(
     analysis_mode="cv",
     checkpoint=None,
     crop=None,
+    auto_frame=False,
 ):
     """Run the full pipeline and return everything the UI needs."""
     config.validate()
@@ -124,7 +140,16 @@ def sonify(
         config.analysis_height,
         config.enhance_contrast,
         crop=crop,
+        auto_frame=auto_frame,
     )
+    if auto_frame:
+        # _processed_from_bytes resized its own crop; keep the config truthful so
+        # the summary and the geometry report the size that was really used.
+        config = replace(
+            config,
+            analysis_width=processed.grayscale.shape[1],
+            analysis_height=processed.grayscale.shape[0],
+        )
 
     if analysis_mode == "ml":
         from src.ml.inference import analyze_ml

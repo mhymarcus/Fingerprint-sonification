@@ -10,6 +10,7 @@ Run locally:
 
 import io
 import os
+import traceback
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
@@ -68,19 +69,26 @@ def section(number, label):
     st.markdown(ui_theme.section(number, label), unsafe_allow_html=True)
 
 
-def build_config():
+def build_config(auto_frame=True):
     """Duration, resolution and the layer mix."""
     controls = st.columns([1, 1], gap="large")
     with controls[0]:
         duration = st.slider("duration / seconds", 5, 60, 30, 1)
     with controls[1]:
-        analysis_size = st.select_slider(
-            "analysis resolution",
-            options=[128, 192, 256, 320, 384, 512],
-            value=512,
-            help="Ridge detail needs resolution. For a photo of a finger, 256 "
-            "is often too coarse and 512 is what makes the ridges appear.",
-        )
+        if auto_frame:
+            analysis_size = 512
+            st.markdown(
+                ui_theme.micro("analysis resolution · chosen automatically"),
+                unsafe_allow_html=True,
+            )
+        else:
+            analysis_size = st.select_slider(
+                "analysis resolution",
+                options=[128, 192, 256, 320, 384, 512],
+                value=512,
+                help="Ridge detail needs resolution. For a photo of a finger, 256 "
+                "is often too coarse and 512 is what makes the ridges appear.",
+            )
 
     enabled, gains, min_frequency, max_frequency, max_events, enhance = (
         {},
@@ -141,7 +149,7 @@ def render_output(result, filename):
     section("03", "output")
     st.markdown(
         ui_theme.micro(
-            f"{stem} · {summary['analysis_mode']} · ridge spacing "
+            f"{stem} · {summary['analysis_mode']} · {summary['analysis_size']}px · ridge spacing "
             f"{summary['spacing_min']:.1f}–{summary['spacing_max']:.1f} px"
             if summary.get("spacing_min")
             else f"{stem} · {summary['analysis_mode']}"
@@ -277,6 +285,12 @@ def main():
         value=False,
         disabled=not sample_available,
     )
+    auto_frame = st.checkbox(
+        "auto frame — find the finger and pick the resolution",
+        value=True,
+        help="Reads the photograph, crops to the print and chooses the analysis "
+        "resolution from the ridge spacing it measures. Untick to set both by hand.",
+    )
 
     image_bytes, filename = None, "fingerprint.png"
     if uploaded is not None:
@@ -298,7 +312,7 @@ def main():
             st.caption("Ready. Set the parameters below, then generate.")
 
     crop = None
-    if image_bytes is not None:
+    if image_bytes is not None and not auto_frame:
         with st.expander("framing / crop", expanded=False):
             st.caption(
                 "If the mask comes out wrong — a crescent, or ridges everywhere — "
@@ -344,7 +358,7 @@ def main():
                 previews[0].caption("could not preview this image")
 
     section("02", "parameters")
-    config = build_config()
+    config = build_config(auto_frame)
 
     checkpoint = available_checkpoint()
     analysis_mode = "cv"
@@ -368,9 +382,12 @@ def main():
                     analysis_mode=analysis_mode,
                     checkpoint=checkpoint,
                     crop=crop,
+                    auto_frame=auto_frame,
                 )
-            except (ValueError, FileNotFoundError, RuntimeError, OSError) as error:
-                st.error(f"could not process this image: {error}")
+            except Exception as error:  # noqa: BLE001 - always show something useful
+                st.error(f"could not process this image: {type(error).__name__}: {error}")
+                with st.expander("technical detail"):
+                    st.code(traceback.format_exc())
             else:
                 st.session_state["result"] = result
                 st.session_state["filename"] = filename
