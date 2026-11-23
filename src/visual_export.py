@@ -30,7 +30,10 @@ from src.sonification.multilayer import orientation_flow_track
 
 
 SCHEMA = "fingerprint-visual/1"
-CONTROL_RATE = 1000
+# Encoded at the same rate as the mix. An unusual rate (1000 Hz) made some
+# hosts mis-decode the file; matching the audio is the safe choice, and the
+# extra size only costs disk on the installation machine.
+CONTROL_RATE = 44100
 CONTROL_CHANNELS = (
     "ridge_length",
     "ridge_position",
@@ -63,6 +66,8 @@ def _to_control_grid(times, values, frame_count):
 
 def control_channels(analysis, multilayer, config):
     """Build the 0..1 control matrix, shape ``(6, frames)``."""
+    if CONTROL_RATE != config.sample_rate:
+        raise ValueError("control rate must match the audio sample rate")
     frames = max(2, int(round(config.duration * CONTROL_RATE)))
     sample_rate = config.sample_rate
 
@@ -77,7 +82,7 @@ def control_channels(analysis, multilayer, config):
     times, values = _envelope(multilayer.mix, sample_rate)
     rows.append(_to_control_grid(times, values, frames))
 
-    matrix = np.vstack(rows)
+    matrix = np.vstack(rows).astype(np.float32)
     if matrix.shape != (len(CONTROL_CHANNELS), frames):
         raise ValueError("control matrix has an unexpected shape")
     # A gentle fade at both ends keeps a patch from snapping on the first frame.
@@ -156,8 +161,8 @@ README = """fingerprint visual package
 Files
 -----
 mix.wav          stereo-free mono master, 44.1 kHz. Play this to the audience.
-controls.wav     6-channel control signal at {rate} Hz, aligned to mix.wav
-                 from sample 0. Channels, in order:
+controls.wav     6-channel control signal, same rate and length as mix.wav,
+                 aligned to sample 0. Channels, in order:
                    0 ridge_length   long-form structure / decay
                    1 ridge_position timed events / spatial triggers
                    2 ridge_orientation slow harmonic movement

@@ -64,7 +64,7 @@ def _validated_suffix(image_bytes, filename):
     return suffix
 
 
-def _processed_from_bytes(image_bytes, filename, width, height, enhance_contrast):
+def _processed_from_bytes(image_bytes, filename, width, height, enhance_contrast, crop=None):
     """Write the upload to a temp file so the CLI loader can validate it."""
     suffix = _validated_suffix(image_bytes, filename)
     handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -73,7 +73,11 @@ def _processed_from_bytes(image_bytes, filename, width, height, enhance_contrast
         handle.flush()
         handle.close()
         processed = preprocess_image(
-            handle.name, width, height, enhance_contrast=enhance_contrast
+            handle.name,
+            width,
+            height,
+            enhance_contrast=enhance_contrast,
+            crop=crop,
         )
     finally:
         Path(handle.name).unlink(missing_ok=True)
@@ -109,6 +113,7 @@ def sonify(
     config,
     analysis_mode="cv",
     checkpoint=None,
+    crop=None,
 ):
     """Run the full pipeline and return everything the UI needs."""
     config.validate()
@@ -118,6 +123,7 @@ def sonify(
         config.analysis_width,
         config.analysis_height,
         config.enhance_contrast,
+        crop=crop,
     )
 
     if analysis_mode == "ml":

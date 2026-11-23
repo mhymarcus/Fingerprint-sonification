@@ -121,14 +121,36 @@ def _create_foreground_mask(grayscale):
     return mask.astype(bool)
 
 
+def _apply_crop(image, crop):
+    """Keep a fractional rectangle: (left, top, right, bottom) in 0..1."""
+    left, top, right, bottom = crop
+    height, width = image.shape
+    left_px = int(np.clip(left, 0.0, 0.95) * width)
+    right_px = int(np.clip(right, 0.05, 1.0) * width)
+    top_px = int(np.clip(top, 0.0, 0.95) * height)
+    bottom_px = int(np.clip(bottom, 0.05, 1.0) * height)
+    if right_px - left_px < 32 or bottom_px - top_px < 32:
+        raise ValueError("Crop is too small; keep at least 32 x 32 pixels")
+    return image[top_px:bottom_px, left_px:right_px]
+
+
 def preprocess_image(
     image_path,
     analysis_width=256,
     analysis_height=256,
     enhance_contrast=True,
+    crop=None,
 ):
-    """Load, crop, resize, normalize, enhance, and denoise a fingerprint."""
+    """Load, crop, resize, normalize, enhance, and denoise a fingerprint.
+
+    ``crop`` is an optional fractional rectangle ``(left, top, right, bottom)``.
+    It matters for photographs: a finger against a textured background gives the
+    background as much detail as the ridges, so framing the print by hand is
+    often the difference between a usable mask and a crescent.
+    """
     original = load_grayscale_image(image_path)
+    if crop is not None:
+        original = _apply_crop(original, crop)
     cropped = _crop_large_uniform_background(original)
     resized = _resize_with_padding(cropped, analysis_width, analysis_height)
     normalized = _normalize_brightness(resized)

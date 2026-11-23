@@ -74,10 +74,10 @@ def build_config():
     with controls[1]:
         analysis_size = st.select_slider(
             "analysis resolution",
-            options=[128, 192, 256, 320],
-            value=256,
-            help="Ridge detail needs resolution. Below ~128 px the ridges of a "
-            "phone photo are only a few pixels apart and the masks degrade.",
+            options=[128, 192, 256, 320, 384, 512],
+            value=512,
+            help="Ridge detail needs resolution. For a photo of a finger, 256 "
+            "is often too coarse and 512 is what makes the ridges appear.",
         )
 
     enabled, gains, min_frequency, max_frequency, max_events, enhance = (
@@ -189,7 +189,10 @@ def render_output(result, filename):
     )
     published = st.session_state.get("published")
     if published:
-        st.caption(f"handed to the projector folder · {published}")
+        st.caption(
+            f"added to the queue · {published} — the previous piece keeps playing "
+            "until the operator advances"
+        )
 
     downloads[3].download_button(
         "visual .zip",
@@ -292,6 +295,22 @@ def main():
             )
             st.caption("Ready. Set the parameters below, then generate.")
 
+    crop = None
+    if image_bytes is not None:
+        with st.expander("framing / crop", expanded=False):
+            st.caption(
+                "If the mask comes out wrong — a crescent, or ridges everywhere — "
+                "pull these in tight around the finger only. Leave them alone when "
+                "the photo already fills the frame."
+            )
+            box = st.columns(4, gap="small")
+            left = box[0].slider("left %", 0, 90, 0, 1)
+            top = box[1].slider("top %", 0, 90, 0, 1)
+            right = box[2].slider("right %", 10, 100, 100, 1)
+            bottom = box[3].slider("bottom %", 10, 100, 100, 1)
+            if (left, top, right, bottom) != (0, 0, 100, 100):
+                crop = (left / 100, top / 100, right / 100, bottom / 100)
+
     section("02", "parameters")
     config = build_config()
 
@@ -316,6 +335,7 @@ def main():
                     config,
                     analysis_mode=analysis_mode,
                     checkpoint=checkpoint,
+                    crop=crop,
                 )
             except (ValueError, FileNotFoundError, RuntimeError, OSError) as error:
                 st.error(f"could not process this image: {error}")
