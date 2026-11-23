@@ -74,13 +74,19 @@ def _crop_large_uniform_background(image):
 
 
 def _resize_with_padding(image, width, height):
+    """Fit the image into a square canvas and report where the real pixels are.
+
+    The padding is synthetic, so callers must be able to exclude it: an adaptive
+    threshold treats the seam between photo and padding as a strong edge and
+    reports it as ridges.
+    """
     background = int(np.median(_border_pixels(image)))
     pil_image = Image.fromarray(image)
     fitted = ImageOps.contain(pil_image, (width, height), Image.Resampling.LANCZOS)
     canvas = Image.new("L", (width, height), color=background)
     offset = ((width - fitted.width) // 2, (height - fitted.height) // 2)
     canvas.paste(fitted, offset)
-    return np.asarray(canvas, dtype=np.uint8)
+    return np.asarray(canvas, dtype=np.uint8), (offset[0], offset[1], fitted.width, fitted.height)
 
 
 def _normalize_brightness(image):
@@ -102,23 +108,58 @@ def _normalize_brightness(image):
 
 
 def _create_foreground_mask(grayscale):
-    image_u8 = np.round(grayscale * 255).astype(np.uint8)
-    _, dark_pixels = cv2.threshold(
-        image_u8, 0, 1, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-    )
-    kernel_size = max(5, (min(image_u8.shape) // 16) | 1)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-    connected = cv2.morphologyEx(dark_pixels, cv2.MORPH_CLOSE, kernel)
-    contours, _ = cv2.findContours(connected, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return np.ones(grayscale.shape, dtype=bool)
+    """Find the subject as the region that carries ridge texture.
 
-    largest = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(largest) < grayscale.size * 0.02:
+    Two obvious rules fail on photographs. "The dark thing is the print" picks
+    the shadow cast by the finger. "Everything that differs from the background
+    colour" picks up vignetting and the shadow as well, and ends up as the whole
+    frame.
+
+    The question that survives both is where ridge texture actually exists: a
+    fingertip is full of fine ridges, a shadow and a paper background are not.
+    That makes the mask self-consistent with what the analysis does next.
+    """
+    image = np.round(np.clip(np.asarray(grayscale, dtype=np.float32), 0, 1) * 255.0)
+    image = image.astype(np.uint8)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(image)
+    block = max(15, ((min(enhanced.shape) // 12) | 1))
+    ridges = (
+        cv2.adaptiveThreshold(
+            enhanced,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            block,
+            5,
+        )
+        > 0
+    )
+    window = max(15, (min(enhanced.shape) // 10) | 1)
+    density = cv2.blur(ridges.astype(np.float32), (window, window))
+    subject = (density > 0.18).astype(np.uint8)
+
+    kernel_size = max(5, (min(enhanced.shape) // 20) | 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    subject = cv2.morphologyEx(subject, cv2.MORPH_CLOSE, kernel)
+    subject = cv2.morphologyEx(subject, cv2.MORPH_OPEN, kernel)
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(subject, 8)
+    if count <= 1:
         return np.ones(grayscale.shape, dtype=bool)
-    mask = np.zeros(grayscale.shape, dtype=np.uint8)
-    cv2.drawContours(mask, [largest], -1, 1, thickness=-1)
-    return mask.astype(bool)
+    index = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    mask = labels == index
+    fraction = float(mask.mean())
+    # Nothing convincing: behave exactly as before rather than crop to a sliver.
+    if fraction < 0.05 or fraction > 0.85:
+        return np.ones(grayscale.shape, dtype=bool)
+    # The frame's own edges always look like texture. Keep them out.
+    inset = max(2, int(round(min(mask.shape) * 0.06)))
+    mask[:inset, :] = False
+    mask[-inset:, :] = False
+    mask[:, :inset] = False
+    mask[:, -inset:] = False
+    return mask
 
 
 def _apply_crop(image, crop):
@@ -152,7 +193,7 @@ def preprocess_image(
     if crop is not None:
         original = _apply_crop(original, crop)
     cropped = _crop_large_uniform_background(original)
-    resized = _resize_with_padding(cropped, analysis_width, analysis_height)
+    resized, content = _resize_with_padding(cropped, analysis_width, analysis_height)
     normalized = _normalize_brightness(resized)
 
     normalized_u8 = np.round(normalized * 255).astype(np.uint8)
@@ -162,7 +203,12 @@ def preprocess_image(
     denoised = cv2.GaussianBlur(normalized_u8, (3, 3), 0.65)
     grayscale = denoised.astype(np.float32) / 255.0
     foreground_mask = _create_foreground_mask(grayscale)
-
+    # Never analyse the padded border: it is invented, not photographed.
+    left, top, content_width, content_height = content
+    if (content_width, content_height) != (analysis_width, analysis_height):
+        content_mask = np.zeros_like(foreground_mask)
+        content_mask[top : top + content_height, left : left + content_width] = True
+        foreground_mask &= content_mask
     return ProcessedImage(
         source_path=Path(image_path),
         original=original,
